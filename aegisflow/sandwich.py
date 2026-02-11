@@ -1,18 +1,15 @@
-import argparse
 import sys
 import os
 import subprocess
 import threading
 import queue
 import time
-import signal
-from .core import SecurityLiaison, ThreatLevel
+from .core import SecurityLiaison
 
 class AegisSandwich:
     """
-    Wraps an external interactive command/process and monitors its output for high-risk patterns.
-    Designed for interactive CLI tools (like 'ollama run', 'python -i', 'bash').
-    Uses threads to read stdout/stderr without blocking stdin.
+    Wraps an external interactive command/process and monitors its output.
+    Improved for v2.5.0 to handle real-time character/chunk streaming.
     """
     
     def __init__(self, command: list):
@@ -24,56 +21,83 @@ class AegisSandwich:
 
     def _monitor_stream(self, pipe, pipe_name):
         """
-        Reads from a pipe character-by-character or line-by-line to support interactive tools.
-        For simplicity and safety in v1, we use line-buffering but flush often.
+        Reads from a pipe chunk-by-chunk to support interactive tools and progress bars.
         """
         try:
-            # We use a simple line reader here. For true PTY support (like colored progress bars),
-            # we would need the 'pty' module (Linux/macOS only) or 'pywinpty' (Windows).
-            # Since we want cross-platform standard lib, we stick to subprocess pipes.
-            # This might lose some color/formatting but ensures we can intercept text.
+            # Buffer for analysis (to detect patterns across chunks)
+            # We keep a rolling window of recent characters
+            line_buffer = ""
             
-            for line in iter(pipe.readline, ''):
-                if self.stop_event.is_set():
+            while not self.stop_event.is_set():
+                # Read small chunks to be responsive
+                chunk = pipe.read(1024) 
+                if not chunk:
                     break
                 
-                if not line:
-                    break
-
-                # Scan the line for threats
-                context = {"content": line.strip(), "source": pipe_name}
+                # Check for threats in this chunk (and potentially overlapping previous)
+                # For strict safety, we might pause here. For UX, we check quickly.
                 
-                # Check for Redlines
-                if self.scanner.scan_behavior("shell_exec", context) or \
-                   self.scanner.scan_behavior("network_request", context):
+                context = {"content": chunk, "source": pipe_name}
+                
+                # Simple check: does the chunk contain "rm -rf" or similar?
+                # We append to line_buffer to check context
+                line_buffer += chunk
+                if len(line_buffer) > 4096: # Keep buffer manageable
+                    line_buffer = line_buffer[-2048:]
+                
+                # Scan the accumulation
+                scan_context = {"content": line_buffer, "source": pipe_name}
+                
+                if self.scanner.scan_behavior("shell_exec", scan_context) or \
+                   self.scanner.scan_behavior("network_request", scan_context):
                    
-                    # High Risk Detected!
-                    # We can't easily suspend just the *printing* in standard pipes without buffering everything.
-                    # But we can pause execution of the process via OS signals.
-                    
-                    self._handle_threat(line, context)
-                else:
-                    # Safe to print
-                    print(line, end='', flush=True)
+                    # High Risk!
+                    self._handle_threat(line_buffer, context)
+                    # If allowed, we continue.
+                    # Clear buffer to avoid re-triggering
+                    line_buffer = ""
+                
+                # Print to real stdout
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
                     
         except Exception:
             pass
 
-    def _handle_threat(self, line, context):
+    def _input_forwarder(self):
         """
-        Handles a detected threat by suspending the process and asking for user override.
+        Forwards stdin to the child process.
         """
-        # 1. Suspend Process
+        try:
+            while not self.stop_event.is_set():
+                # This is blocking on Windows unfortunately, making clean exit hard
+                # But necessary for interaction
+                if sys.stdin.isatty():
+                    data = sys.stdin.read(1) # Character by char
+                else:
+                    data = sys.stdin.read(1024)
+                    
+                if not data:
+                    break
+                
+                if self.process and self.process.stdin:
+                    self.process.stdin.write(data)
+                    self.process.stdin.flush()
+        except:
+            pass
+
+    def _handle_threat(self, recent_content, context):
+        """
+        Handles a detected threat by suspending the process.
+        """
         self._suspend_process()
         
-        # 2. Clear current line to avoid messy output
-        print(f"\n[AegisFlow Alert] Suspicious output detected in {context['source']}: {line.strip()}")
+        # Newline to break current prompt line
+        print(f"\n\n[AegisFlow Alert] Suspicious pattern detected in output.")
         
-        # 3. Ask User (HITL)
         try:
             def allow_action():
                 self._resume_process()
-                print(line, end='', flush=True) # Print the blocked line
                 
             self.liaison.mediate("high_risk_output", context, allow_action)
             
@@ -108,24 +132,22 @@ class AegisSandwich:
             self.process.terminate()
 
     def run(self):
-        """
-        Executes the interactive command.
-        """
-        print(f"[AegisFlow] Wrapping interactive session: {' '.join(self.command)}")
-        print("[AegisFlow] Monitoring active. Press Ctrl+C to exit.")
-        
-        # Use simple subprocess for now. 
-        # For true interactive shell (stdin passthrough), we need to stream stdin too.
+        print(f"[AegisFlow v2.5.0] Sandwiching: {' '.join(self.command)}")
+        print("[AegisFlow] Ctrl+C to exit.")
         
         try:
-            # We use bufsize=1 (line buffered) and text=True for easier line scanning
+            # Use bufsize=0 for unbuffered binary, then decode manually?
+            # Or use text=True (universal newlines) with bufsize=0 is not allowed.
+            # Best compromise for Python < 3.8 is different, but for 3.12:
+            # We use text mode with line buffering (1), but our thread reads actively.
+            
             self.process = subprocess.Popen(
                 self.command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                stdin=sys.stdin, # Connect stdin directly to parent!
+                stdin=subprocess.PIPE,
                 text=True,
-                bufsize=1,
+                bufsize=0, # Unbuffered! Important for real-time chars
                 encoding='utf-8', 
                 errors='replace'
             )
@@ -133,15 +155,19 @@ class AegisSandwich:
             print(f"[Error] Command not found: {self.command[0]}")
             return 1
 
-        # Start monitoring threads for output
+        # Threads
         t_out = threading.Thread(target=self._monitor_stream, args=(self.process.stdout, "STDOUT"))
         t_err = threading.Thread(target=self._monitor_stream, args=(self.process.stderr, "STDERR"))
+        t_in = threading.Thread(target=self._input_forwarder)
+        
         t_out.daemon = True
         t_err.daemon = True
+        t_in.daemon = True # Input thread will die when main dies
+        
         t_out.start()
         t_err.start()
+        t_in.start()
 
-        # Wait for process to finish
         try:
             self.process.wait()
         except KeyboardInterrupt:
