@@ -1,4 +1,9 @@
-# AegisFlow v2.3.0 - Governance Layer for AI Agents
+# 🛡️ AegisFlow
+[![PyPI version](https://badge.fury.io/py/aegisflow.svg)](https://badge.fury.io/py/aegisflow)
+[![Documentation](https://img.shields.io/badge/Docs-Live-neon.svg)](https://aegisflow-security.surge.sh)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**The Universal Security Layer for AI Agents.**
 
 AegisFlow is a sophisticated **Security Liaison** designed to govern AI agent actions through transparent mediation rather than silent blocking. It acts as a "conscious" layer, ensuring high-risk operations are verified by a human-in-the-loop (HITL).
 

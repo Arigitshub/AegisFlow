@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aegisflow"
-version = "2.4.0"
+version = "2.4.1"
 description = "A sophisticated Security Liaison and Governance Layer for AI Agents"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -25,11 +25,13 @@ dependencies = [
 ]
 
 [project.scripts]
-aegis = "aegisflow.cli:main"
+aegis = "aegisflow.cli_main:main"
 
 [project.urls]
-Homepage = "https://github.com/Arigitshub/AegisFlow"
-Issues = "https://github.com/Arigitshub/AegisFlow/issues"
+Homepage = "https://aegisflow-security.surge.sh"
+Documentation = "https://aegisflow-security.surge.sh"
+Source = "https://github.com/Arigitshub/AegisFlow"
+Tracker = "https://github.com/Arigitshub/AegisFlow/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["aegisflow"]
