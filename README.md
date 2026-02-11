@@ -1,4 +1,4 @@
-# AegisFlow v2.2.0 - Governance Layer for AI Agents
+# AegisFlow v2.3.0 - Governance Layer for AI Agents
 
 AegisFlow is a sophisticated **Security Liaison** designed to govern AI agent actions through transparent mediation rather than silent blocking. It acts as a "conscious" layer, ensuring high-risk operations are verified by a human-in-the-loop (HITL).
 
@@ -8,7 +8,7 @@ AegisFlow is a sophisticated **Security Liaison** designed to govern AI agent ac
 - **Transparent Mediation**: Risks are reported clearly; high risks require explicit approval.
 - **Sentinel State Engine**: Tracks reputation and persists logs.
 - **Audit Trail**: All decisions and outcomes are logged to `~/.aegis/logs/aegis_audit.json`.
-- **Sandwich Wrapper**: Wrap any terminal command in a monitored shell.
+- **Sandwich Wrapper**: Wrap any terminal command in a monitored shell (Ollama, Python, Bash).
 
 ## Installation
 
@@ -20,12 +20,16 @@ This installs the `aegis` CLI tool globally.
 
 ## Usage
 
-### 1. The AegisSandwich (Universal Terminal Wrapper)
+### 1. The AegisSandwich (Interactive Wrapper)
 
-Run `aegis run` to wrap any agent process. AegisFlow will monitor its output for dangerous patterns and suspend it if necessary.
+Run `aegis run` to wrap any agent process, including interactive tools like Ollama. AegisFlow will monitor its output for dangerous patterns and suspend it if necessary.
 
 ```bash
-aegis run python my_agent.py
+aegis run "ollama run llama3"
+```
+Or for Python scripts:
+```bash
+aegis run "python my_agent.py"
 ```
 
 ### 2. Static Scan
