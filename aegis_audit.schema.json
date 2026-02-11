@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AegisFlow Audit Log",
+  "description": "Schema for aegis_audit.json log entries",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the event"
+    },
+    "threat_level": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High"],
+      "description": "Assessed threat level of the action"
+    },
+    "action_type": {
+      "type": "string",
+      "description": "Type of action (e.g., file_op, network_request)"
+    },
+    "details": {
+      "type": "string",
+      "description": "Stringified dictionary of context/details"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["EXECUTED", "WARNED_PROCEED", "PAUSED_VERIFY", "USER_OVERRIDE_EXECUTED", "USER_ABORTED"],
+      "description": "Result of the mediation process"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "User-provided reasoning for overriding a High threat"
+    }
+  },
+  "required": ["timestamp", "threat_level", "action_type", "outcome"]
+}
