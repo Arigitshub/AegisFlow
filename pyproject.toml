@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aegisflow"
-version = "2.0.0"
+version = "2.1.0"
 description = "A sophisticated Security Liaison and Governance Layer for AI Agents"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -20,10 +20,15 @@ classifiers = [
 ]
 dependencies = [
     "rich",
+    "litellm",
 ]
 
 [project.scripts]
 aegis = "aegisflow.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Arigitshub/AegisFlow"
+Issues = "https://github.com/Arigitshub/AegisFlow/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["aegisflow"]
