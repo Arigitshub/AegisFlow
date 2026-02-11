@@ -1,30 +1,32 @@
-# ... (imports)
-import sys
-import argparse
-import os
+from .sentinel import Sentinel
 
-# Import AegisSandwich
-try:
-    from .sandwich import AegisSandwich
-except ImportError:
-    AegisSandwich = None
+def report_status():
+    sentinel = Sentinel()
+    sentinel.generate_report()
 
-# ... (other functions: scan_file, protect_shell, report_status, check_updates)
+def check_updates():
+    sentinel = Sentinel()
+    sentinel.check_updates()
 
 def main():
-    # Handle 'run' command manually first to consume remainder args correctly
+    import argparse
+    import os
+    
+    # We need to manually parse arguments because 'run' consumes the rest of the line
     if len(sys.argv) > 1 and sys.argv[1] == "run":
-        if not AegisSandwich:
-            print("[Error] AegisSandwich dependencies (psutil) not found. Install 'aegisflow[run]' or ensure psutil is installed.")
-            sys.exit(1)
-            
+        # Handle run command manually to pass all args to sandwich
         cmd_args = sys.argv[2:]
         if not cmd_args:
             print("Usage: aegis run <command> [args...]")
             sys.exit(1)
             
-        sandwich = AegisSandwich(cmd_args)
-        sys.exit(sandwich.run())
+        try:
+            from .sandwich import AegisSandwich
+            sandwich = AegisSandwich(cmd_args)
+            return sandwich.run()
+        except ImportError as e:
+            print(f"[Error] Failed to load AegisSandwich: {e}")
+            sys.exit(1)
 
     parser = argparse.ArgumentParser(description="AegisFlow Governance Layer")
     subparsers = parser.add_subparsers(dest="command")
@@ -42,17 +44,20 @@ def main():
     # update command
     update_parser = subparsers.add_parser("update", help="Check for threat feed updates")
     
-    # run command (in help only, handled above)
-    run_parser = subparsers.add_parser("run", help="Wrap and monitor an agent process")
+    # run command help placeholder
+    run_parser = subparsers.add_parser("run", help="Wrap and monitor an agent process (e.g., 'aegis run python agent.py')")
 
     args = parser.parse_args()
     
     if args.command == "scan":
+        # ... (scan logic from previous implementation)
+        from .cli import scan_file # Re-use or move logic
         if os.path.isfile(args.path):
             scan_file(args.path)
         else:
             print(f"Directory scanning not yet implemented. Please point to a file.")
     elif args.command == "protect":
+        from .cli import protect_shell
         protect_shell()
     elif args.command == "report":
         report_status()
@@ -60,6 +65,3 @@ def main():
         check_updates()
     else:
         parser.print_help()
-
-if __name__ == "__main__":
-    main()

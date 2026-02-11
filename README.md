@@ -1,36 +1,42 @@
-# 🛡️ AegisFlow
-[![PyPI version](https://badge.fury.io/py/aegisflow.svg)](https://badge.fury.io/py/aegisflow)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+# AegisFlow v2.2.0 - Governance Layer for AI Agents
 
-**The Universal Security Layer for AI Agents.**
+AegisFlow is a sophisticated **Security Liaison** designed to govern AI agent actions through transparent mediation rather than silent blocking. It acts as a "conscious" layer, ensuring high-risk operations are verified by a human-in-the-loop (HITL).
 
-AegisFlow is a CPU-efficient Python library that sits between your LLM and your system. It prevents prompt injections, scrubs sensitive data (API keys/PII), and enforces a "Human-in-the-Loop" protocol for high-risk operations.
+## Core Philosophy
 
-<div align="center">
-  <img src="https://via.placeholder.com/800x400?text=AegisFlow+Security+Dashboard" alt="AegisFlow Dashboard">
-</div>
+- **Suspicion Scoring**: Every action is assigned a Threat Level (Low, Medium, High).
+- **Transparent Mediation**: Risks are reported clearly; high risks require explicit approval.
+- **Sentinel State Engine**: Tracks reputation and persists logs.
+- **Audit Trail**: All decisions and outcomes are logged to `~/.aegis/logs/aegis_audit.json`.
+- **Sandwich Wrapper**: Wrap any terminal command in a monitored shell.
 
-## ✨ Features
-
-- **Sentinel State Engine**: Tracks agent behavior over time and escalates threats based on "risk streaks."
-- **Behavioral Redlines**: Detects recursive deletions (`rm -rf`), unauthorized POST requests, and security bypass attempts.
-- **Key Scrubber**: Automatically redacts API keys and EMV data before they leak to the LLM.
-- **Human-in-the-Loop**: Requires a "Reasoning String" justification for any high-risk system commands.
-- **Universal Provider**: Seamlessly wrap OpenAI, Anthropic, Gemini, and more via `SafeGenerator`.
-
-## 🚀 Quick Start
+## Installation
 
 ```bash
 pip install aegisflow
 ```
 
-Scan your agent scripts for vulnerabilities:
+This installs the `aegis` CLI tool globally.
+
+## Usage
+
+### 1. The AegisSandwich (Universal Terminal Wrapper)
+
+Run `aegis run` to wrap any agent process. AegisFlow will monitor its output for dangerous patterns and suspend it if necessary.
 
 ```bash
-aegis scan my_agent_script.py
+aegis run python my_agent.py
 ```
 
-### Universal LLM Integration
+### 2. Static Scan
+
+Scan a file for behavioral redlines:
+
+```bash
+aegis scan path/to/script.py
+```
+
+### 3. Universal LLM Integration (Code)
 
 Wrap any LLM call with `SafeGenerator` to get instant security:
 
@@ -44,51 +50,32 @@ response = llm.generate("Write a script to delete all files.", model="gpt-4")
 print(response)
 ```
 
-## 🏗️ Architecture
+## Sentinel State Engine
 
-AegisFlow operates as a lightweight governance layer. It intercepts function calls and network requests, assigning a **Threat Level** (Low, Medium, High) to each action.
+The Sentinel tracks "Risk Streaks". If an agent triggers 3 Medium risks in a row, the next action is automatically escalated to High.
 
-- **Low Risk**: Allowed and logged.
-- **Medium Risk**: Warned and logged; contributes to a "Risk Streak."
-- **High Risk**: Blocked unless the user provides a valid **Reasoning String**.
+For High Risk (or escalated) actions, the user must provide a **Reasoning String** (e.g., *"Debugging local server"*) to proceed. Simple "yes/no" confirmations are not accepted for high-risk operations.
 
-## 📊 Sentinel Reports
+## Configuration (.aegis.json)
 
-View your security audit logs in a professional terminal dashboard:
+Create a `.aegis.json` in your project root or home directory to customize behavior:
 
-```bash
-aegis report
+```json
+{
+  "protected_paths": [
+    "/prod/db",
+    "./secrets"
+  ],
+  "strict_mode": true
+}
 ```
 
-Example Output:
-```text
-+-----------------------------------------------------------------------------+
-| Timestamp                | Level  | Action      | Outcome     | Details     |
-|--------------------------+--------+-------------+-------------+-------------|
-| 2026-02-10T12:34:07-0500 | Low    | safe_op     | EXECUTED    | {'content': |
-| 2026-02-10T23:03:31-0500 | High   | file_op     | USER_OVERR | {'path':    |
-|                          |        |             |             | '/etc/shad |
-+-----------------------------------------------------------------------------+
-```
+## Behavioral Redlines
 
-## 📦 Installation & Setup
-
-1.  **Install via Pip**:
-    ```bash
-    pip install aegisflow
-    ```
-2.  **Initialize Configuration** (Optional):
-    Create a `.aegis.json` in your project root:
-    ```json
-    {
-      "protected_paths": ["/prod/db", "./secrets"],
-      "strict_mode": true
-    }
-    ```
-
-## 🤝 Universal AI Integration
-
-AegisFlow uses `LiteLLM` under the hood to support 100+ LLM providers. Just pass the model name (e.g., `claude-3-opus`, `gemini-pro`) to `generate()`.
+AegisFlow monitors for:
+- **Recursive Operations**: `rm -rf`, massive deletes.
+- **Exfiltration**: POST requests containing key-like patterns.
+- **Rule Negation**: AI thoughts attempting to bypass security constraints.
 
 ## License
 
