@@ -30,7 +30,10 @@ This installs the `aegis` CLI tool globally.
 Run `aegis run` to wrap any agent process, including interactive tools like Ollama. AegisFlow will monitor its output for dangerous patterns and suspend it if necessary.
 
 ```bash
+# Supports both quoted and unquoted syntax (v2.5.1+)
 aegis run "ollama run llama3"
+# or
+aegis run ollama run llama3
 ```
 Or for Python scripts:
 ```bash

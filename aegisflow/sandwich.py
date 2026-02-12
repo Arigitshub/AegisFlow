@@ -4,6 +4,8 @@ import subprocess
 import threading
 import queue
 import time
+import shlex
+import shutil
 from .core import SecurityLiaison
 
 class AegisSandwich:
@@ -13,7 +15,15 @@ class AegisSandwich:
     """
     
     def __init__(self, command: list):
-        self.command = command
+        # Fix for Issue: command parsing for quoted strings
+        if len(command) == 1:
+            # Check if it looks like a multi-word command and split it
+            # posix=True is generally safer for cross-platform unless specific Windows escaping is needed
+            # but for 'ollama run llama3', shlex.split handles it correctly.
+            self.command = shlex.split(command[0], posix=(os.name != 'nt'))
+        else:
+            self.command = command
+            
         self.liaison = SecurityLiaison()
         self.scanner = self.liaison.scanner
         self.process = None
@@ -132,7 +142,20 @@ class AegisSandwich:
             self.process.terminate()
 
     def run(self):
-        print(f"[AegisFlow v2.5.0] Sandwiching: {' '.join(self.command)}")
+        # Resolve executable for better error handling on Windows
+        executable = self.command[0]
+        full_path = shutil.which(executable)
+        
+        if full_path:
+            # Resolved via PATH or exact match
+            self.command[0] = full_path
+        elif os.name == 'nt' and not executable.lower().endswith('.exe'):
+             # Try appending .exe on Windows if missing
+             exe_path = shutil.which(executable + ".exe")
+             if exe_path:
+                 self.command[0] = exe_path
+        
+        print(f"[AegisFlow v2.5.1] Sandwiching: {' '.join(self.command)}")
         print("[AegisFlow] Ctrl+C to exit.")
         
         try:
@@ -153,6 +176,7 @@ class AegisSandwich:
             )
         except FileNotFoundError:
             print(f"[Error] Command not found: {self.command[0]}")
+            print("Tip: Ensure the command is in your system PATH.")
             return 1
 
         # Threads
