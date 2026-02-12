@@ -2,6 +2,7 @@ import argparse
 import sys
 import os
 import subprocess
+import time
 from .core import SecurityLiaison, ThreatLevel
 from .sentinel import Sentinel
 
@@ -35,7 +36,65 @@ def launch_app(app_name):
     except Exception as e:
         print(f"[Error] Failed to launch {app_name}: {e}")
 
-# ... (Previous functions: scan_file, protect_shell, report_status, check_updates, run_agent)
+def report_status():
+    """
+    Generates a security audit report from the Sentinel logs.
+    """
+    sentinel = Sentinel()
+    sentinel.generate_report()
+
+def check_updates():
+    """
+    Checks for threat feed updates via Sentinel.
+    """
+    sentinel = Sentinel()
+    sentinel.check_updates()
+
+def scan_file(path):
+    """
+    Scans a file for potential threats using SecurityLiaison.
+    """
+    print(f"[AegisFlow] Scanning: {path}")
+    if not os.path.exists(path):
+        print(f"[Error] File not found: {path}")
+        return
+
+    liaison = SecurityLiaison()
+    scanner = liaison.scanner
+    
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+            
+        # Scan context
+        context = {"content": content, "path": path}
+        
+        # Check behavioral patterns
+        if scanner.scan_behavior("file_op", context):
+             print(f"[ALERT] High Risk Pattern Detected in {path} (Behavioral)")
+        elif scanner.scan_text(content):
+             print(f"[WARNING] Suspicious Keywords Detected in {path}")
+        else:
+             print(f"[OK] No immediate threats detected in {path}")
+             
+    except Exception as e:
+        print(f"[Error] Failed to scan file: {e}")
+
+def protect_shell():
+    """
+    Starts a protected shell session (placeholder implementation).
+    """
+    print("[AegisFlow] Starting protected shell... (Monitor Active)")
+    print("Type 'exit' to quit.")
+    while True:
+        try:
+            cmd = input("aegis> ")
+            if cmd == "exit":
+                break
+            # Here we would wrap execution. For now, just echo.
+            print(f"Executing: {cmd}")
+        except KeyboardInterrupt:
+            break
 
 def main():
     # Handle 'run' command manually first
@@ -69,20 +128,15 @@ def main():
     args = parser.parse_args()
     
     if args.command == "scan":
-        # ... logic
-        from .cli_main import scan_file # Re-import or fix structure
         if os.path.isfile(args.path):
             scan_file(args.path)
         else:
             print(f"Directory scanning not yet implemented.")
     elif args.command == "protect":
-        from .cli_main import protect_shell
         protect_shell()
     elif args.command == "report":
-        from .cli_main import report_status
         report_status()
     elif args.command == "update":
-        from .cli_main import check_updates
         check_updates()
     elif args.command == "launch":
         launch_app(args.app)

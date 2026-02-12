@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aegisflow"
-version = "2.5.1"
+version = "2.5.2"
 description = "A sophisticated Security Liaison and Governance Layer for AI Agents"
 readme = "README.md"
 requires-python = ">=3.8"

@@ -32,44 +32,57 @@ class AegisSandwich:
     def _monitor_stream(self, pipe, pipe_name):
         """
         Reads from a pipe chunk-by-chunk to support interactive tools and progress bars.
+        Uses raw binary reads to avoid blocking on line buffering.
         """
         try:
             # Buffer for analysis (to detect patterns across chunks)
-            # We keep a rolling window of recent characters
-            line_buffer = ""
+            line_buffer_bytes = b""
             
             while not self.stop_event.is_set():
-                # Read small chunks to be responsive
+                # Read raw bytes. read(1024) on unbuffered pipe returns available data.
+                # On Windows, read(1024) might block until 1024 bytes are ready?
+                # No, standard file objects might, but unbuffered raw objects usually return partial.
+                # However, to be safe, we use a smaller chunk or rely on select/peek if possible.
+                # But on Windows pipes, select isn't fully supported.
+                # We'll stick to read(1) for absolute responsiveness if needed, but 1024 is usually fine for chunks.
+                # Actually, let's try reading smaller chunks for better latency?
                 chunk = pipe.read(1024) 
                 if not chunk:
                     break
                 
-                # Check for threats in this chunk (and potentially overlapping previous)
-                # For strict safety, we might pause here. For UX, we check quickly.
-                
-                context = {"content": chunk, "source": pipe_name}
-                
-                # Simple check: does the chunk contain "rm -rf" or similar?
-                # We append to line_buffer to check context
-                line_buffer += chunk
-                if len(line_buffer) > 4096: # Keep buffer manageable
-                    line_buffer = line_buffer[-2048:]
-                
-                # Scan the accumulation
-                scan_context = {"content": line_buffer, "source": pipe_name}
-                
-                if self.scanner.scan_behavior("shell_exec", scan_context) or \
-                   self.scanner.scan_behavior("network_request", scan_context):
-                   
-                    # High Risk!
-                    self._handle_threat(line_buffer, context)
-                    # If allowed, we continue.
-                    # Clear buffer to avoid re-triggering
-                    line_buffer = ""
-                
-                # Print to real stdout
-                sys.stdout.write(chunk)
-                sys.stdout.flush()
+                # 1. Print immediately to terminal (pass-through)
+                # Use binary write to avoid encoding delays/issues
+                target_stream = sys.stdout.buffer if pipe_name == "STDOUT" else sys.stderr.buffer
+                target_stream.write(chunk)
+                target_stream.flush()
+
+                # 2. Analyze for threats (async-ish)
+                try:
+                    # Decode for text scanning (lossy is fine for security scan)
+                    text_chunk = chunk.decode('utf-8', errors='ignore')
+                    
+                    # Manage buffer for cross-chunk patterns
+                    line_buffer_bytes += chunk
+                    if len(line_buffer_bytes) > 4096:
+                        line_buffer_bytes = line_buffer_bytes[-2048:]
+                    
+                    full_text_buffer = line_buffer_bytes.decode('utf-8', errors='ignore')
+
+                    context = {"content": text_chunk, "source": pipe_name}
+                    scan_context = {"content": full_text_buffer, "source": pipe_name}
+                    
+                    if self.scanner.scan_behavior("shell_exec", scan_context) or \
+                       self.scanner.scan_behavior("network_request", scan_context) or \
+                       self.scanner.scan_text(full_text_buffer): # Added scan_text for prompt injection check
+                       
+                        # High Risk!
+                        self._handle_threat(full_text_buffer, context)
+                        # Clear buffer after handling
+                        line_buffer_bytes = b""
+                        
+                except Exception as e:
+                    # Don't let scanner crash the stream
+                    pass
                     
         except Exception:
             pass
@@ -80,12 +93,12 @@ class AegisSandwich:
         """
         try:
             while not self.stop_event.is_set():
-                # This is blocking on Windows unfortunately, making clean exit hard
-                # But necessary for interaction
+                # Windows stdin read can be blocking.
                 if sys.stdin.isatty():
-                    data = sys.stdin.read(1) # Character by char
+                    # This is still blocking on Windows, but better than nothing
+                    data = sys.stdin.buffer.read(1)
                 else:
-                    data = sys.stdin.read(1024)
+                    data = sys.stdin.buffer.read(1024)
                     
                 if not data:
                     break
@@ -147,32 +160,24 @@ class AegisSandwich:
         full_path = shutil.which(executable)
         
         if full_path:
-            # Resolved via PATH or exact match
             self.command[0] = full_path
         elif os.name == 'nt' and not executable.lower().endswith('.exe'):
-             # Try appending .exe on Windows if missing
              exe_path = shutil.which(executable + ".exe")
              if exe_path:
                  self.command[0] = exe_path
         
-        print(f"[AegisFlow v2.5.1] Sandwiching: {' '.join(self.command)}")
+        print(f"[AegisFlow v2.5.2] Sandwiching: {' '.join(self.command)}")
         print("[AegisFlow] Ctrl+C to exit.")
         
         try:
-            # Use bufsize=0 for unbuffered binary, then decode manually?
-            # Or use text=True (universal newlines) with bufsize=0 is not allowed.
-            # Best compromise for Python < 3.8 is different, but for 3.12:
-            # We use text mode with line buffering (1), but our thread reads actively.
-            
+            # v2.5.2 Fix: Use bufsize=0 and binary mode for raw I/O pass-through
             self.process = subprocess.Popen(
                 self.command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
-                text=True,
-                bufsize=0, # Unbuffered! Important for real-time chars
-                encoding='utf-8', 
-                errors='replace'
+                bufsize=0, # Unbuffered binary
+                shell=False
             )
         except FileNotFoundError:
             print(f"[Error] Command not found: {self.command[0]}")
