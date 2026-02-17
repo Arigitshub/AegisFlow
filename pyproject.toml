@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aegisflow"
-version = "2.5.2"
-description = "A sophisticated Security Liaison and Governance Layer for AI Agents"
+version = "3.0.0"
+description = "The Universal Security Layer for AI Agents — Plugin-Based Guardrails, Rail System, and Process Sandboxing"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = "MIT"
 authors = [
   { name = "Ari", email = "ari@example.com" },
@@ -17,21 +17,49 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "rich",
-    "litellm",
-    "psutil",
+    "rich>=12.0",
+    "litellm>=1.0",
+    "psutil>=5.0",
+    "pydantic>=2.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+ml = [
+    "transformers>=4.30",
+    "torch>=2.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "mypy>=1.0",
+    "ruff>=0.1",
 ]
 
 [project.scripts]
 aegis = "aegisflow.cli_main:main"
 
 [project.urls]
-Homepage = "https://aegisflow-security.surge.sh"
-Documentation = "https://aegisflow-security.surge.sh"
+Homepage = "https://github.com/Arigitshub/AegisFlow"
+Documentation = "https://github.com/Arigitshub/AegisFlow#readme"
 Source = "https://github.com/Arigitshub/AegisFlow"
 Tracker = "https://github.com/Arigitshub/AegisFlow/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["aegisflow"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
