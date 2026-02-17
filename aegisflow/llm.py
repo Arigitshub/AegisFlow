@@ -1,75 +1,170 @@
-import litellm
-import os
-from .core import SecurityLiaison, ThreatLevel
+"""
+AegisFlow SafeGenerator (v3.0)
+Secure LLM wrapper with input/output rails and async support.
+"""
+
+from typing import Any, Dict, Optional, Type
+
+from .core import SecurityLiaison
+from .scanners import BehavioralScanner
+from .scrubber import KeyScrubber
+from .sentinel import ThreatLevel
+
 
 class SafeGenerator:
     """
-    Universal LLM Wrapper with integrated AegisFlow security checks.
+    Wraps LLM calls with AegisFlow's full security pipeline:
+    1. Input rail chain execution
+    2. Pre-flight scan (injection detection via plugins)
+    3. Key scrubbing
+    4. LLM execution
+    5. Post-flight scan (dangerous output detection)
+    6. Output rail chain execution
+    7. Optional: Pydantic structured output validation
     """
-    def __init__(self):
-        self.liaison = SecurityLiaison()
-        self.scrubber = self.liaison.scrubber
-        self.scanner = self.liaison.scanner
 
-    def generate(self, prompt: str, model: str = "gpt-3.5-turbo", **kwargs):
+    def __init__(self, liaison: SecurityLiaison = None):
+        self.liaison = liaison or SecurityLiaison()
+        self.scanner = BehavioralScanner()
+        self.scrubber = KeyScrubber()
+
+    def generate(self, prompt: str, model: str = "gpt-3.5-turbo",
+                 response_model: Optional[Type] = None, **kwargs) -> Any:
         """
-        Securely generates text from an LLM.
+        Generate a response from an LLM with full security pipeline.
         
-        Steps:
-        1. Pre-Flight: Scan prompt for injections.
-        2. Scrub: Redact PII/Keys.
-        3. Execute: Call LiteLLM.
-        4. Post-Flight: Scan response for dangerous commands.
+        Args:
+            prompt: The user prompt
+            model: LLM model name (any litellm-supported model)
+            response_model: Optional Pydantic model for structured output validation
+            **kwargs: Additional args passed to litellm.completion
+        
+        Returns:
+            String response (or Pydantic model instance if response_model provided)
         """
+        import litellm
+
+        # Step 1: Input Rails
+        input_result = self.liaison.input_rails.run(prompt, {"source": "llm_prompt"})
+        if not input_result.passed:
+            return f"[AegisFlow] Prompt blocked: {input_result.reason}"
         
-        # Step 1: Pre-Flight Scan (Injection)
-        if self.scanner.scan_text(prompt):
-            # We treat "prompt_injection" as a specific threat type
-            def allow_injection():
-                return True # If user overrides, we proceed
-                
+        working_prompt = input_result.modified_content or prompt
+
+        # Step 2: Pre-Flight Scan (Plugin-based injection detection)
+        if self.scanner.scan_text(working_prompt):
             try:
-                # This mediates the *attempt*. If user says NO, it raises PermissionError.
-                self.liaison.mediate("prompt_injection_attempt", {"content": prompt}, allow_injection)
+                self.liaison.mediate(
+                    "prompt_injection_attempt", 
+                    {"content": working_prompt}, 
+                    lambda: True
+                )
             except PermissionError:
-                return "Request blocked by AegisFlow (Prompt Injection Detected)."
+                return "[AegisFlow] Request blocked (Injection Detected)."
 
-        # Step 2: Scrub Keys
-        clean_prompt = self.scrubber.scrub(prompt)
-        if clean_prompt != prompt:
-             print("[AegisFlow] Sensitive keys redacted from prompt.")
+        # Step 3: Scrub Keys
+        clean_prompt = self.scrubber.scrub(working_prompt)
 
-        # Step 3: Execute (LiteLLM)
+        # Step 4: Execute LLM
         try:
-            # We wrap the actual API call in mediate just in case we want to govern "cost" or "network" later
-            # For now, we assume calling the LLM itself is "Low Risk" unless the prompt was bad.
-            
-            # Using litellm completion (synchronous for simplicity in v1)
             response = litellm.completion(
-                model=model, 
-                messages=[{"role": "user", "content": clean_prompt}], 
+                model=model,
+                messages=[{"role": "user", "content": clean_prompt}],
                 **kwargs
             )
             content = response.choices[0].message.content
-            
         except Exception as e:
-            # Check if it's an auth error (likely missing key in test env)
-            if "AuthenticationError" in str(e) or "api_key" in str(e):
-                 # Fail gracefully in test/CI
-                 return f"LLM Error: {str(e)}"
-            return f"LLM Error: {str(e)}"
+            return f"[AegisFlow] LLM Error: {str(e)}"
 
-        # Step 4: Post-Flight Scan (Dangerous Commands in Response)
-        # Scan content for dangerous behavior (e.g., rm -rf)
+        # Step 5: Post-Flight Scan
         if self.scanner.scan_behavior("shell_exec", {"content": content}):
-             try:
-                 # If response contains dangerous commands, we mediate.
-                 # Context is the response content.
-                 def return_dangerous_content():
-                     return content
-                     
-                 return self.liaison.mediate("dangerous_content_generated", {"content": content}, return_dangerous_content)
-             except PermissionError:
-                 return "Response blocked by AegisFlow (Dangerous Content Detected)."
+            try:
+                def return_content():
+                    return content
+                content = self.liaison.mediate(
+                    "dangerous_content_generated", 
+                    {"content": content}, 
+                    return_content
+                )
+            except PermissionError:
+                return "[AegisFlow] Response blocked (Dangerous Content)."
 
-        return content
+        # Step 6: Output Rails
+        output_result = self.liaison.output_rails.run(content, {"source": "llm_response"})
+        if not output_result.passed:
+            return f"[AegisFlow] Response blocked: {output_result.reason}"
+        
+        final_content = output_result.modified_content or content
+
+        # Step 7: Structured Output Validation
+        if response_model is not None:
+            try:
+                from pydantic import BaseModel
+                if issubclass(response_model, BaseModel):
+                    import json
+                    try:
+                        data = json.loads(final_content)
+                        return response_model(**data)
+                    except (json.JSONDecodeError, Exception) as e:
+                        return f"[AegisFlow] Structured output validation failed: {e}"
+            except ImportError:
+                pass
+
+        return final_content
+
+    async def async_generate(self, prompt: str, model: str = "gpt-3.5-turbo",
+                             response_model: Optional[Type] = None, **kwargs) -> Any:
+        """
+        Async version of generate() using litellm.acompletion.
+        Does NOT support interactive HIGH-risk approval (will block instead).
+        """
+        import litellm
+
+        # Input Rails
+        input_result = self.liaison.input_rails.run(prompt, {"source": "llm_prompt"})
+        if not input_result.passed:
+            return f"[AegisFlow] Prompt blocked: {input_result.reason}"
+        
+        working_prompt = input_result.modified_content or prompt
+
+        # Pre-flight scan
+        if self.scanner.scan_text(working_prompt):
+            return "[AegisFlow] Async request blocked (Injection Detected)."
+
+        # Scrub
+        clean_prompt = self.scrubber.scrub(working_prompt)
+
+        # Async LLM call
+        try:
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": clean_prompt}],
+                **kwargs
+            )
+            content = response.choices[0].message.content
+        except Exception as e:
+            return f"[AegisFlow] LLM Error: {str(e)}"
+
+        # Post-flight scan
+        if self.scanner.scan_behavior("shell_exec", {"content": content}):
+            return "[AegisFlow] Async response blocked (Dangerous Content)."
+
+        # Output rails
+        output_result = self.liaison.output_rails.run(content, {"source": "llm_response"})
+        final_content = output_result.modified_content or content
+
+        # Structured output
+        if response_model is not None:
+            try:
+                from pydantic import BaseModel
+                if issubclass(response_model, BaseModel):
+                    import json
+                    try:
+                        data = json.loads(final_content)
+                        return response_model(**data)
+                    except Exception as e:
+                        return f"[AegisFlow] Validation failed: {e}"
+            except ImportError:
+                pass
+
+        return final_content
