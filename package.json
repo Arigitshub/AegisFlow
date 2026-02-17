@@ -1,0 +1,31 @@
+{
+  "name": "aegisflow_pkg",
+  "version": "1.0.0",
+  "description": "[![PyPI version](https://badge.fury.io/py/aegisflow.svg)](https://badge.fury.io/py/aegisflow) [![Documentation](https://img.shields.io/badge/Docs-Live-neon.svg)](https://aegisflow-security.surge.sh) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arigitshub/AegisFlow.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Arigitshub/AegisFlow/issues"
+  },
+  "homepage": "https://github.com/Arigitshub/AegisFlow#readme",
+  "devDependencies": {
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.28"
+  }
+}
