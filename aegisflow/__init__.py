@@ -36,6 +36,9 @@ from .filesystem import ProtectedZones
 from .scrubber import KeyScrubber
 from .sentinel import Sentinel, ThreatLevel
 
+# Detection Engine
+from .detectors import DetectionEngine, DetectionResult
+
 # Optional: LLM Integration
 try:
     from .llm import SafeGenerator
@@ -69,6 +72,9 @@ __all__ = [
     "KeyScrubber",
     "Sentinel",
     "ThreatLevel",
+    # Detection
+    "DetectionEngine",
+    "DetectionResult",
     # Optional
     "SafeGenerator",
     "AegisSandwich",

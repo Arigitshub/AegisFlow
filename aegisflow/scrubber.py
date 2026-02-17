@@ -42,3 +42,55 @@ class KeyScrubber:
             scrubbed_text = regex.sub(replace_callback, scrubbed_text)
             
         return scrubbed_text
+
+    def scrub_structured(self, data: dict, _path: str = "") -> dict:
+        """
+        Recursively scrub sensitive data from dict/JSON structures.
+        Walks nested dicts and lists, scrubbing all string values.
+        
+        Args:
+            data: Dictionary to scrub (keys are preserved, values are scrubbed)
+            _path: Internal — tracks current key path for logging
+            
+        Returns:
+            New dict with all string values scrubbed.
+        """
+        if isinstance(data, dict):
+            result = {}
+            for k, v in data.items():
+                current_path = f"{_path}.{k}" if _path else k
+                # Scrub both key names that might be sensitive and values
+                if isinstance(v, str):
+                    result[k] = self.scrub(v)
+                elif isinstance(v, dict):
+                    result[k] = self.scrub_structured(v, current_path)
+                elif isinstance(v, list):
+                    result[k] = [
+                        self.scrub_structured(item, f"{current_path}[{i}]")
+                        if isinstance(item, dict)
+                        else self.scrub(item) if isinstance(item, str)
+                        else item
+                        for i, item in enumerate(v)
+                    ]
+                else:
+                    result[k] = v
+            return result
+        return data
+
+    def get_entity_report(self, text: str) -> list:
+        """
+        Returns a list of detected entities (type + location) without redacting.
+        Useful for audit logs and compliance reporting.
+        """
+        entities = []
+        for name, pattern in self.PATTERNS.items():
+            regex = re.compile(pattern)
+            for match in regex.finditer(text):
+                entities.append({
+                    "type": name,
+                    "value_preview": match.group()[:8] + "***",
+                    "start": match.start(),
+                    "end": match.end(),
+                })
+        return entities
+
